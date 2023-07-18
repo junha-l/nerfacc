@@ -9,7 +9,7 @@ from .grid import Grid, OccupancyGrid, query_grid
 from .intersection import ray_aabb_intersect
 from .losses import distortion as loss_distortion
 from .pack import pack_data, pack_info, unpack_data, unpack_info
-from .ray_marching import ray_marching
+from .ray_marching import ray_marching, ray_marching_intersection
 from .version import __version__
 from .vol_rendering import (
     accumulate_along_rays,
@@ -42,6 +42,7 @@ __all__ = [
     "contract_inv",
     "ray_aabb_intersect",
     "ray_marching",
+    "ray_marching_intersection",
     "accumulate_along_rays",
     "render_visibility",
     "render_weight_from_alpha",
