@@ -46,7 +46,7 @@ std::vector<torch::Tensor> ray_aabb_intersect(
     const float near_plane,
     const float far_plane, 
     const float miss_value);
-std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
+std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor, RaySegmentsSpec> traverse_grids(
     // rays
     const torch::Tensor rays_o, // [n_rays, 3]
     const torch::Tensor rays_d, // [n_rays, 3]
@@ -65,6 +65,7 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
     const float cone_angle,
     const bool compute_intervals,
     const bool compute_samples,
+    const bool compute_intersections,
     const bool compute_terminate_planes,
     const int32_t traverse_steps_limit, // <= 0 means no limit
     const bool over_allocate); // over allocate the memory for intervals and samples

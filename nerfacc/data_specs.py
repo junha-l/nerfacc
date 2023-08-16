@@ -10,6 +10,48 @@ from . import cuda as _C
 
 
 @dataclass
+class RayIntersections:
+    """ """
+
+    vals: torch.Tensor
+    is_valid: Optional[torch.Tensor] = None
+
+    def _to_cpp(self):
+        """
+        Generate object to pass to C++
+        """
+
+        spec = _C.RaySegmentsSpec()
+        spec.vals = self.vals.contiguous()
+        # if self.packed_info is not None:
+        #     spec.chunk_starts = self.packed_info[:, 0].contiguous()
+        # if self.chunk_cnts is not None:
+        #     spec.chunk_cnts = self.packed_info[:, 1].contiguous()
+        # if self.ray_indices is not None:
+        #     spec.ray_indices = self.ray_indices.contiguous()
+        return spec
+
+    @classmethod
+    def _from_cpp(cls, spec):
+        """
+        Generate object from C++
+        """
+        if spec.is_valid is not None:
+            is_valid = spec.is_valid
+        else:
+            is_valid = None
+        vals = spec.vals
+        return cls(
+            vals=vals,
+            is_valid=is_valid,
+        )
+
+    @property
+    def device(self) -> torch.device:
+        return self.vals.device
+
+
+@dataclass
 class RaySamples:
     """Ray samples that supports batched and flattened data.
 

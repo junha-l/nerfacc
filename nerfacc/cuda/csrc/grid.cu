@@ -90,6 +90,7 @@ __global__ void traverse_grids_kernel(
     bool first_pass,
     PackedRaySegmentsSpec intervals,
     PackedRaySegmentsSpec samples,
+    PackedRaySegmentsSpec intersections,
     float *terminate_planes)
 {
     float eps = 1e-6f;
@@ -259,6 +260,12 @@ __global__ void traverse_grids_kernel(
                         t_last = t_next;
                         if (t_next >= t_traverse) break;
                     }
+                    if (intersections.chunk_cnts != nullptr) {
+                        if (!first_pass && !intersections.is_valid[tid]) {
+                            intersections.vals[tid] = cell_id;
+                            intersections.is_valid[tid] = true;
+                        }
+                    }
                 }
 
                 // printf(
@@ -317,7 +324,7 @@ __global__ void ray_aabb_intersect_kernel(
 }  // namespace
 
 
-std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
+std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor, RaySegmentsSpec> traverse_grids(
     // rays
     const torch::Tensor rays_o, // [n_rays, 3]
     const torch::Tensor rays_d, // [n_rays, 3]
@@ -336,6 +343,7 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
     const float cone_angle,
     const bool compute_intervals,
     const bool compute_samples,
+    const bool compute_intersections,
     const bool compute_terminate_planes,
     const int32_t traverse_steps_limit, // <= 0 means no limit
     const bool over_allocate) // over allocate the memory for intervals and samples
@@ -356,7 +364,7 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
     dim3 blocks = dim3(min(max_blocks, ceil_div<int32_t>(n_rays, threads.x)));
 
     // outputs
-    RaySegmentsSpec intervals, samples;
+    RaySegmentsSpec intervals, samples, intersections;
     torch::Tensor terminate_planes;
     if (compute_terminate_planes) 
         terminate_planes = torch::empty({n_rays}, rays_o.options());
@@ -370,6 +378,10 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
         if (compute_samples) {
             samples.chunk_cnts = torch::full({n_rays}, traverse_steps_limit, rays_o.options().dtype(torch::kLong)) * rays_mask;
             samples.memalloc_data_from_chunk(false, true, true);
+        }
+        if (compute_intersections) {
+            intersections.chunk_cnts = torch::full({n_rays}, 1, rays_o.options().dtype(torch::kLong)) * rays_mask;
+            intersections.memalloc_data_from_chunk(false, true, true);
         }
 
         device::traverse_grids_kernel<<<blocks, threads, 0, stream>>>(
@@ -397,6 +409,7 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
             false,
             device::PackedRaySegmentsSpec(intervals),
             device::PackedRaySegmentsSpec(samples),
+            device::PackedRaySegmentsSpec(intersections),
             compute_terminate_planes ? terminate_planes.data_ptr<float>() : nullptr);
         
         // update the chunk starts with the actual chunk_cnts from traversal.
@@ -410,6 +423,9 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
             intervals.chunk_cnts = torch::empty({n_rays}, rays_o.options().dtype(torch::kLong));
         if (compute_samples)
             samples.chunk_cnts = torch::empty({n_rays}, rays_o.options().dtype(torch::kLong));
+        if (compute_intersections)
+            intersections.chunk_cnts = torch::ones({n_rays}, rays_o.options().dtype(torch::kLong));
+
         device::traverse_grids_kernel<<<blocks, threads, 0, stream>>>(
             // rays
             n_rays,
@@ -435,6 +451,7 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
             true,
             device::PackedRaySegmentsSpec(intervals),
             device::PackedRaySegmentsSpec(samples),
+            device::PackedRaySegmentsSpec(intersections),
             nullptr);  /* terminate_planes */
         
         // second pass to record the segments.
@@ -442,6 +459,9 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
             intervals.memalloc_data_from_chunk(true, true);
         if (compute_samples)
             samples.memalloc_data_from_chunk(false, false, true);
+        if (compute_intersections)
+            intersections.memalloc_data_from_chunk(false, true, true);
+
         device::traverse_grids_kernel<<<blocks, threads, 0, stream>>>(
             // rays
             n_rays,
@@ -467,10 +487,11 @@ std::tuple<RaySegmentsSpec, RaySegmentsSpec, torch::Tensor> traverse_grids(
             false,
             device::PackedRaySegmentsSpec(intervals),
             device::PackedRaySegmentsSpec(samples),
+            device::PackedRaySegmentsSpec(intersections),
             compute_terminate_planes ? terminate_planes.data_ptr<float>() : nullptr);
     }
     
-    return {intervals, samples, terminate_planes};
+    return {intervals, samples, terminate_planes, intersections};
 }
 
 

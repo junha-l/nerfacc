@@ -7,7 +7,7 @@ import torch
 from torch import Tensor
 
 from . import cuda as _C
-from .data_specs import RayIntervals, RaySamples
+from .data_specs import RayIntersections, RayIntervals, RaySamples
 
 
 @torch.no_grad()
@@ -157,12 +157,10 @@ def traverse_grids(
         # Compute ray aabb intersection for all levels of grid. [n_rays, m]
         t_mins, t_maxs, hits = ray_aabb_intersect(rays_o, rays_d, aabbs)
         # Sort the t values for each ray. [n_rays, m]
-        t_sorted, t_indices = torch.sort(
-            torch.cat([t_mins, t_maxs], dim=-1), dim=-1
-        )
+        t_sorted, t_indices = torch.sort(torch.cat([t_mins, t_maxs], dim=-1), dim=-1)
 
     # Traverse the grids.
-    intervals, samples, termination_planes = _C.traverse_grids(
+    intervals, samples, termination_planes, intersections = _C.traverse_grids(
         # rays
         rays_o.contiguous(),  # [n_rays, 3]
         rays_d.contiguous(),  # [n_rays, 3]
@@ -182,12 +180,14 @@ def traverse_grids(
         True,
         True,
         True,
+        True,
         traverse_steps_limit,
         over_allocate,
     )
     return (
         RayIntervals._from_cpp(intervals),
         RaySamples._from_cpp(samples),
+        RayIntersections._from_cpp(intersections),
         termination_planes,
     )
 
